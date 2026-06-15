@@ -16,12 +16,15 @@ TARGET_GRUB_TOOLS_ARCH := x86_64-efi
 TARGET_GRUB_MODULES_HOST_PREBUILT_TAG := linux-arm64
 TARGET_LIVEISO_DTB := $(PRODUCT_OUT)/dtb.img
 TARGET_LIVEISO_DTB_NAME := qcs6490-radxa-dragon-q6a.dtb
+TARGET_BUILD_RAWIMAGE := true
+TARGET_RAWIMAGE_GRUB_CONFIG := $(TARGET_DEVICE_PATH)/configs/bootmgr/grub-disk.cfg
+TARGET_RAWIMAGE_GRUB_LOAD_CONFIG := $(TARGET_DEVICE_PATH)/configs/bootmgr/grub-load.cfg
 
 # Boot parameters
 BOARD_KERNEL_CMDLINE += \
     console=ttyMSM0,115200n8 \
-    cgroup_disable=pressure \
     earlycon \
+    initcall_blacklist=simpledrm_platform_driver_init \
     clk_ignore_unused
 
 BOARD_KERNEL_CMDLINE_SERIAL_CONSOLE := \
@@ -53,7 +56,14 @@ TARGET_KERNEL_CONFIG_EXT := \
     device/mainline/generic/configs/kernel/customizations.config
 TARGET_KERNEL_DTB := qcom/qcs6490-radxa-dragon-q6a.dtb
 TARGET_KERNEL_SOURCE := kernel/radxa/dragon
+TARGET_KERNEL_ADDITIONAL_FLAGS += CONFIG_USE_FW_REQUEST=y
+TARGET_KERNEL_EXT_MODULE_ROOT := kernel/radxa/aic8800/src/USB/driver_fw/drivers
+TARGET_KERNEL_EXT_MODULES := aic8800:kbuild
+
+BOARD_VENDOR_KERNEL_MODULES_LOAD += \
+    aic_load_fw.ko \
+    aic8800_fdrv.ko
 
 # Firmware
 TARGET_LINUX_FIRMWARE_REPO := external/linux-firmware-upstream
-TARGET_LINUX_FIRMWARE_USE_WHENCE := true
+TARGET_LINUX_FIRMWARE_EXTRA_DIRS := kernel/radxa/aic8800/src/USB/driver_fw/fw/aic8800D80
