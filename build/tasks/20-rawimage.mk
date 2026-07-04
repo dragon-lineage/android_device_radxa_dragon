@@ -17,6 +17,7 @@ RAWIMAGE_PART_EXTRA_MIB ?= 16
 
 RAWIMAGE_GRUB_CONFIG := device/radxa/dragon/configs/bootmgr/grub-disk.cfg
 RAWIMAGE_GRUB_LOAD_CONFIG := device/radxa/dragon/configs/bootmgr/grub-load.cfg
+TARGET_GRUB_HOST_PREBUILT_TAG ?= $(HOST_PREBUILT_TAG)
 RAWIMAGE_GRUB_TOOL_DIR := prebuilts/bootmgr/grub/$(TARGET_GRUB_HOST_PREBUILT_TAG)/$(TARGET_GRUB_TOOLS_ARCH)
 RAWIMAGE_GRUB_MODULE_DIR := prebuilts/bootmgr/grub/$(TARGET_GRUB_MODULES_HOST_PREBUILT_TAG)/$(TARGET_GRUB_ARCH)/lib/grub/$(TARGET_GRUB_ARCH)
 RAWIMAGE_GRUB_FONT := prebuilts/bootmgr/grub/$(TARGET_GRUB_MODULES_HOST_PREBUILT_TAG)/$(TARGET_GRUB_ARCH)/share/grub/unicode.pf2
