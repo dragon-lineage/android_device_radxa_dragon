@@ -13,6 +13,9 @@ PRODUCT_COPY_FILES += \
 PRODUCT_SOONG_NAMESPACES += \
     $(TARGET_DEVICE_PATH)
 
+DEVICE_PACKAGE_OVERLAYS += \
+    $(TARGET_DEVICE_PATH)/overlays/overlay
+
 PRODUCT_VENDOR_PROPERTIES += \
     vendor.hwc.drm.ctm=DRM_OR_IGNORE \
     vendor.hwc.drm.force_sdr=true
