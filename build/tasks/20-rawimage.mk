@@ -5,15 +5,18 @@
 
 ifeq ($(TARGET_DEVICE),dragon)
 
-INSTALLED_RAWIMAGE_TARGET := $(PRODUCT_OUT)/$(BOOTMGR_ARTIFACT_FILENAME_PREFIX)-disk.img
+INSTALLED_RAWIMAGE_TARGET := $(PRODUCT_OUT)/$(BOOTMGR_ARTIFACT_FILENAME_PREFIX)-raw.img
 RAWIMAGE_WORK_DIR := $(TARGET_OUT_INTERMEDIATES)/RAWIMAGE_OBJ
 RAWIMAGE_FIRMWARE_DIR := $(TARGET_OUT_INTERMEDIATES)/RAWIMAGE_FIRMWARE
 RAWIMAGE_FIRMWARE_STAMP := $(RAWIMAGE_FIRMWARE_DIR)/.timestamp
 
-RAWIMAGE_ESP_SIZE_MIB ?= 256
+RAWIMAGE_PAYLOAD_DIR_NAME ?= payload
+RAWIMAGE_ESP_SIZE_MIB ?= 300
+RAWIMAGE_BOOT_SIZE_MIB ?= 4096
 RAWIMAGE_METADATA_SIZE_MIB ?= 64
-RAWIMAGE_USERDATA_SIZE_MIB ?= 12288
-RAWIMAGE_PART_EXTRA_MIB ?= 16
+RAWIMAGE_USERDATA_SIZE_MIB ?= 10240
+RAWIMAGE_PAYLOAD_IMAGE_EXTRA_MIB ?= 16
+RAWIMAGE_PAYLOAD_IMAGE_COUNT ?= 4
 
 RAWIMAGE_GRUB_CONFIG := device/radxa/dragon/configs/bootmgr/grub-disk.cfg
 RAWIMAGE_GRUB_LOAD_CONFIG := device/radxa/dragon/configs/bootmgr/grub-load.cfg
@@ -54,13 +57,17 @@ define make-rawimage-target
 	test -x $(RAWIMAGE_SGDISK) || { echo "Missing host tool: $(RAWIMAGE_SGDISK) (install gdisk)" >&2; exit 1; }
 	rm -rf $(RAWIMAGE_WORK_DIR)
 	mkdir -p \
-		$(RAWIMAGE_WORK_DIR)/boot-root/$(BOOTMGR_ANDROID_DIR_NAME) \
+		$(RAWIMAGE_WORK_DIR)/boot-root/$(RAWIMAGE_PAYLOAD_DIR_NAME) \
 		$(RAWIMAGE_WORK_DIR)/boot-root/boot/grub/fonts \
 		$(RAWIMAGE_WORK_DIR)/empty
-	cp $(PRODUCT_OUT)/kernel $(RAWIMAGE_WORK_DIR)/boot-root/$(BOOTMGR_ANDROID_DIR_NAME)/kernel
-	cp $(INSTALLED_RAMDISK_ALL_COMBINED_TARGET) $(RAWIMAGE_WORK_DIR)/boot-root/$(BOOTMGR_ANDROID_DIR_NAME)/ramdisk-all-combined.img
-	cp $(TARGET_LIVEISO_DTB) $(RAWIMAGE_WORK_DIR)/boot-root/$(BOOTMGR_ANDROID_DIR_NAME)/$(TARGET_LIVEISO_DTB_NAME)
-	cp -a $(RAWIMAGE_FIRMWARE_DIR) $(RAWIMAGE_WORK_DIR)/boot-root/firmware
+	cp $(PRODUCT_OUT)/kernel $(RAWIMAGE_WORK_DIR)/boot-root/$(RAWIMAGE_PAYLOAD_DIR_NAME)/kernel
+	cp $(INSTALLED_RAMDISK_ALL_COMBINED_TARGET) $(RAWIMAGE_WORK_DIR)/boot-root/$(RAWIMAGE_PAYLOAD_DIR_NAME)/ramdisk-all-combined.img
+	cp $(TARGET_LIVEISO_DTB) $(RAWIMAGE_WORK_DIR)/boot-root/$(RAWIMAGE_PAYLOAD_DIR_NAME)/$(TARGET_LIVEISO_DTB_NAME)
+	cp $(PRODUCT_OUT)/system.img $(RAWIMAGE_WORK_DIR)/boot-root/$(RAWIMAGE_PAYLOAD_DIR_NAME)/system.img
+	cp $(PRODUCT_OUT)/system_dlkm.img $(RAWIMAGE_WORK_DIR)/boot-root/$(RAWIMAGE_PAYLOAD_DIR_NAME)/system_dlkm.img
+	cp $(PRODUCT_OUT)/vendor.img $(RAWIMAGE_WORK_DIR)/boot-root/$(RAWIMAGE_PAYLOAD_DIR_NAME)/vendor.img
+	cp $(PRODUCT_OUT)/vendor_dlkm.img $(RAWIMAGE_WORK_DIR)/boot-root/$(RAWIMAGE_PAYLOAD_DIR_NAME)/vendor_dlkm.img
+	cp -a $(RAWIMAGE_FIRMWARE_DIR) $(RAWIMAGE_WORK_DIR)/boot-root/$(RAWIMAGE_PAYLOAD_DIR_NAME)/firmware
 	cp $(RAWIMAGE_GRUB_FONT) $(RAWIMAGE_WORK_DIR)/boot-root/boot/grub/fonts/unicode.pf2
 	cp $(RAWIMAGE_GRUB_CONFIG) $(RAWIMAGE_WORK_DIR)/boot-root/boot/grub/grub.cfg
 	$(call process-bootmgr-cfg-common,$(RAWIMAGE_WORK_DIR)/boot-root/boot/grub/grub.cfg)
@@ -77,14 +84,18 @@ define make-rawimage-target
 	$(RAWIMAGE_MTOOLS_DIR)/mcopy -i $(RAWIMAGE_WORK_DIR)/esp.img $(RAWIMAGE_WORK_DIR)/BOOTAA64.EFI ::/EFI/BOOT/BOOTAA64.EFI
 	set -e; \
 		boot_used_mib=$$(du -sm $(RAWIMAGE_WORK_DIR)/boot-root | awk '{print $$1}'); \
-		boot_size_mib=$$((boot_used_mib + 256)); \
+		payload_reserved_mib=$$(( $(RAWIMAGE_PAYLOAD_IMAGE_EXTRA_MIB) * $(RAWIMAGE_PAYLOAD_IMAGE_COUNT) )); \
+		boot_required_mib=$$(( boot_used_mib + payload_reserved_mib )); \
+		if [ $$boot_required_mib -gt $(RAWIMAGE_BOOT_SIZE_MIB) ]; then \
+			echo "BOOT payload is $$boot_used_mib MiB plus $$payload_reserved_mib MiB reserve, larger than RAWIMAGE_BOOT_SIZE_MIB=$(RAWIMAGE_BOOT_SIZE_MIB)" >&2; \
+			exit 1; \
+		fi; \
 		PATH=$(HOST_OUT_EXECUTABLES):$$PATH $(MKEXTUSERIMG) --label BOOT --inode_size 256 --journal_size 0 --reserved_percent 0 \
-			$(RAWIMAGE_WORK_DIR)/boot-root $(RAWIMAGE_WORK_DIR)/boot.img ext4 / $$((boot_size_mib * 1024 * 1024)); \
+			$(RAWIMAGE_WORK_DIR)/boot-root $(RAWIMAGE_WORK_DIR)/boot.img ext4 / $$(( $(RAWIMAGE_BOOT_SIZE_MIB) * 1024 * 1024 )); \
 		PATH=$(HOST_OUT_EXECUTABLES):$$PATH $(MKEXTUSERIMG) --label metadata --inode_size 256 --journal_size 0 --reserved_percent 0 \
 			$(RAWIMAGE_WORK_DIR)/empty $(RAWIMAGE_WORK_DIR)/metadata.img ext4 /metadata $$(( $(RAWIMAGE_METADATA_SIZE_MIB) * 1024 * 1024 )); \
 		PATH=$(HOST_OUT_EXECUTABLES):$$PATH $(MKEXTUSERIMG) --label userdata --inode_size 256 --journal_size 0 --reserved_percent 0 \
 			$(RAWIMAGE_WORK_DIR)/empty $(RAWIMAGE_WORK_DIR)/userdata.img ext4 /data $$(( $(RAWIMAGE_USERDATA_SIZE_MIB) * 1024 * 1024 )); \
-		ceil_mib() { echo $$((($$1 + 1048575) / 1048576)); }; \
 		next_sector=2048; \
 		sgdisk_args=(); \
 		dd_args=(); \
@@ -97,13 +108,9 @@ define make-rawimage-target
 			next_sector=$$((end + 1)); \
 		}; \
 		add_part 1 EFI EF00 $(RAWIMAGE_WORK_DIR)/esp.img $(RAWIMAGE_ESP_SIZE_MIB); \
-		add_part 2 BOOT 8300 $(RAWIMAGE_WORK_DIR)/boot.img $$boot_size_mib; \
-		add_part 3 system 8300 $(PRODUCT_OUT)/system.img $$(( $$(ceil_mib $$(stat -c %s $(PRODUCT_OUT)/system.img)) + $(RAWIMAGE_PART_EXTRA_MIB) )); \
-		add_part 4 vendor 8300 $(PRODUCT_OUT)/vendor.img $$(( $$(ceil_mib $$(stat -c %s $(PRODUCT_OUT)/vendor.img)) + $(RAWIMAGE_PART_EXTRA_MIB) )); \
-		add_part 5 system_dlkm 8300 $(PRODUCT_OUT)/system_dlkm.img $$(( $$(ceil_mib $$(stat -c %s $(PRODUCT_OUT)/system_dlkm.img)) + $(RAWIMAGE_PART_EXTRA_MIB) )); \
-		add_part 6 vendor_dlkm 8300 $(PRODUCT_OUT)/vendor_dlkm.img $$(( $$(ceil_mib $$(stat -c %s $(PRODUCT_OUT)/vendor_dlkm.img)) + $(RAWIMAGE_PART_EXTRA_MIB) )); \
-		add_part 7 metadata 8300 $(RAWIMAGE_WORK_DIR)/metadata.img $(RAWIMAGE_METADATA_SIZE_MIB); \
-		add_part 8 userdata 8300 $(RAWIMAGE_WORK_DIR)/userdata.img $(RAWIMAGE_USERDATA_SIZE_MIB); \
+		add_part 2 BOOT 8300 $(RAWIMAGE_WORK_DIR)/boot.img $(RAWIMAGE_BOOT_SIZE_MIB); \
+		add_part 3 metadata 8300 $(RAWIMAGE_WORK_DIR)/metadata.img $(RAWIMAGE_METADATA_SIZE_MIB); \
+		add_part 4 userdata 8300 $(RAWIMAGE_WORK_DIR)/userdata.img $(RAWIMAGE_USERDATA_SIZE_MIB); \
 		rm -f $(1) $(1).sha256; \
 		truncate -s $$(((next_sector + 2048) * 512)) $(1); \
 		$(RAWIMAGE_SGDISK) --clear --set-alignment=2048 "$${sgdisk_args[@]}" $(1); \
